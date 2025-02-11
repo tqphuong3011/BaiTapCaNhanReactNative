@@ -7,71 +7,80 @@ import {
   StyleSheet,
   Image,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import axios from 'axios';
 
 const EditProfile = () => {
+  
   const [userData, setUserData] = useState({
-    fullName: '',
+    name: '',
     email: '',
     phone: '',
-    avatar: '',
+    image: '',
   });
+
   const [newEmail, setNewEmail] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [showOtpInput, setShowOtpInput] = useState(false);
   const [isEmailChange, setIsEmailChange] = useState(false);
 
-  // Hàm chọn ảnh từ thư viện
-  const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 1,
-    });
+  // Thêm hàm fetchUserData
+  const fetchUserData = async () => {
+    try {
+      
+      // const userId = await AsyncStorage.getItem('userId');
+      const userId = '67abac81f54e8b95ba411049';
+      
+      const response = await axios.get(`http://localhost:3000/users/${userId}`, {
+        headers: {
+          Authorization: `Bearer ${userId}`,
+        },
+      });
 
-    if (!result.canceled) {
-      // Upload ảnh lên Cloudinary
-      const formData = new FormData();
-      const response = await fetch(result.assets[0].uri);
-      const blob = await response.blob();
-      formData.append('file', blob, 'profile-image.jpg');
-      formData.append('upload_preset', 'YOUR_UPLOAD_PRESET'); // Thay thế bằng upload preset của bạn
-
-      try {
-        const response = await fetch(
-          'https://api.cloudinary.com/v1_1/YOUR_CLOUD_NAME/image/upload', // Thay thế bằng cloud name của bạn
-          {
-            method: 'POST',
-            body: formData,
-          }
-        );
-        const data = await response.json();
-        setUserData({ ...userData, avatar: data.secure_url });
-      } catch (error) {
-        Alert.alert('Error', 'Failed to upload image');
-      }
+      const user = response.data;
+      setUserData({
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        image: user.image,
+      });
+      
+      // // Cập nhật giá trị mặc định cho email và phone mới
+      // setNewEmail(user.email);
+      // setNewPhone(user.phone);
+    } catch (err) {
+      Alert.alert('Error:', err instanceof Error ? err.message : 'An error occurred');
     }
   };
+
+  // Gọi API khi component mount
+  useEffect(() => {
+    fetchUserData();
+  }, []);
 
   // Hàm gửi OTP
   const sendOTP = async () => {
     try {
-      const response = await fetch('YOUR_API_ENDPOINT/send-otp', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      const token = await AsyncStorage.getItem('userToken');
+      const response = await axios.post(
+        'YOUR_API_ENDPOINT/send-otp',
+        {
           email: newEmail,
           type: isEmailChange ? 'email' : 'phone',
-        }),
-      });
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
       
-      if (response.ok) {
+      if (response.status === 200) {
         setShowOtpInput(true);
         Alert.alert('Success', 'OTP has been sent to your email');
       }
@@ -83,19 +92,23 @@ const EditProfile = () => {
   // Hàm xác thực OTP
   const verifyOTP = async () => {
     try {
-      const response = await fetch('YOUR_API_ENDPOINT/verify-otp', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      const token = await AsyncStorage.getItem('userToken');
+      const response = await axios.post(
+        'YOUR_API_ENDPOINT/verify-otp',
+        {
           email: newEmail,
           otp: otp,
           type: isEmailChange ? 'email' : 'phone',
-        }),
-      });
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
 
-      if (response.ok) {
+      if (response.status === 200) {
         if (isEmailChange) {
           setUserData({ ...userData, email: newEmail });
         } else {
@@ -110,13 +123,55 @@ const EditProfile = () => {
     }
   };
 
+  // Hàm upload ảnh
+  const pickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      try {
+        const formData = new FormData();
+        const response = await fetch(result.assets[0].uri);
+        const blob = await response.blob();
+        formData.append('file', blob, 'profile-image.jpg');
+        formData.append('upload_preset', 'YOUR_UPLOAD_PRESET');
+        
+        // const cloudinaryResponse = await axios.post(
+        //   'https://api.cloudinary.com/v1_1/YOUR_CLOUD_NAME/image/upload',
+        //   formData,
+        //   {
+        //     headers: {
+        //       'Content-Type': 'multipart/form-data',
+        //     },
+        //   }
+        // );
+        
+        // setUserData({ ...userData, image: cloudinaryResponse.data.secure_url });
+        
+        // console.log(response,"\n",blob,"\n",formData,"\n",cloudinaryResponse.data.secure_url)
+        console.log(response,"\n",blob,"\n",formData)
+
+        // Cập nhật avatar lên server của bạn
+        const updateUser = userData;
+        await axios.patch(
+          `http://localhost:3000/users/67abac81f54e8b95ba411049`,updateUser);
+      } catch (error) {
+        Alert.alert('Error', 'Failed to upload image');
+      }
+    }
+  };
+
   return (
     <View style={styles.container}>
       <TouchableOpacity onPress={pickImage} style={styles.avatarContainer}>
         <Image
           source={
-            userData.avatar
-              ? { uri: userData.avatar }
+            userData.image
+              ? { uri: userData.image }
               : require('@/assets/images/default-avatar.png')
           }
           style={styles.avatar}
@@ -128,8 +183,8 @@ const EditProfile = () => {
         <Text style={styles.label}>Full Name</Text>
         <TextInput
           style={styles.input}
-          value={userData.fullName}
-          onChangeText={(text) => setUserData({ ...userData, fullName: text })}
+          value={userData.name}
+          onChangeText={(text) => setUserData({ ...userData, name: text })}
         />
 
         <Text style={styles.label}>Email</Text>
@@ -263,6 +318,24 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    color: 'red',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: '#007AFF',
+    padding: 10,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 16,
   },
 });
 
